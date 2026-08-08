@@ -64,7 +64,9 @@ export interface DiscoveryCard {
   match_score?: number;
   match_tier?: string;
   match_reasons?: string[];
+  match_differences?: string[];
   match_method?: string;
+  features?: Record<string, number>;
 }
 
 export interface TravelRequest {

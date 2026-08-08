@@ -1654,26 +1654,123 @@ export const aiService = {
   }
 };
 
+export const matchingService = {
+  async getCandidates(): Promise<DiscoveryCard[]> {
+    if (USE_MOCK) {
+      return discoveryService.getTravelBuddies();
+    }
+    const res = await api.get('/matching/candidates');
+    return res.data;
+  },
+
+  async getUserCompatibility(userId: string) {
+    if (USE_MOCK) {
+      const buddies = await discoveryService.getTravelBuddies();
+      const match = buddies.find((b: any) => b.user.id === userId);
+      if (match) {
+        return {
+          candidate_user_id: userId,
+          candidate_name: match.user.name,
+          compatibility_score: match.match_score || 75,
+          compatibility_formatted: match.compatibility,
+          match_tier: match.match_tier || 'Strong Match',
+          match_reasons: match.match_reasons || ['✓ Compatible travel style', '✓ Similar budget preference'],
+          match_differences: [],
+          match_method: match.match_method || 'Rule-Based Compatibility'
+        };
+      }
+      return {
+        candidate_user_id: userId,
+        candidate_name: 'Traveler',
+        compatibility_score: 65,
+        compatibility_formatted: '65%',
+        match_tier: 'Good Match',
+        match_reasons: ['✓ Shared interests', '✓ Compatible travel style'],
+        match_differences: [],
+        match_method: 'Rule-Based Compatibility'
+      };
+    }
+    const res = await api.get(`/matching/${userId}`);
+    return res.data;
+  },
+
+  async computeScore(payload: any) {
+    if (USE_MOCK) {
+      return {
+        compatibility_score: 82,
+        compatibility_formatted: '82%',
+        match_tier: 'Strong Match',
+        match_reasons: ['✓ Same destination', '✓ Similar budget preference'],
+        match_differences: ['Different activity preference'],
+        match_method: 'Rule-Based Compatibility'
+      };
+    }
+    const res = await api.post('/matching/score', payload);
+    return res.data;
+  }
+};
+
 export const mlService = {
-  async trainModel() {
+  async trainModel(algorithm: string = "logistic_regression") {
     if (USE_MOCK) {
       await delay(1200);
+      const isRf = algorithm.toLowerCase().includes('forest') || algorithm.toLowerCase().includes('rf');
+      const algoName = isRf ? "Random Forest Classifier" : "Logistic Regression Classifier";
       const metrics = {
-        model_type: "Logistic Regression Classifier",
-        trained_at: new Date().toISOString(),
-        samples_count: 100,
-        accuracy: 0.92,
-        precision: 0.90,
-        recall: 0.94,
-        f1_score: 0.92,
-        confusion_matrix: [[45, 5], [3, 47]]
+        status: "Model active & trained",
+        algorithm: algoName,
+        modelVersion: "v1.0.0",
+        featureVersion: "v1.0",
+        datasetSize: 100,
+        trainedAt: new Date().toISOString(),
+        metrics: {
+          accuracy: isRf ? 0.94 : 0.92,
+          precision: isRf ? 0.93 : 0.90,
+          recall: isRf ? 0.95 : 0.94,
+          f1_score: isRf ? 0.94 : 0.92,
+          confusion_matrix: isRf ? [[47, 3], [3, 47]] : [[45, 5], [3, 47]]
+        }
       };
       saveToDB('tripmate_ml_metrics', [metrics]);
-      return { status: "success", message: "Model trained and reloaded successfully.", metrics };
+      return { status: "success", message: `ML model (${algoName}) trained and reloaded successfully.`, metrics };
     } else {
-      const res = await api.post('/ml/train');
+      const res = await api.post('/ml/train', { algorithm });
       return res.data;
     }
+  },
+
+  async getStatus() {
+    if (USE_MOCK) {
+      await delay(150);
+      const metrics = getFromDB<any>('tripmate_ml_metrics');
+      if (metrics && metrics.length > 0) {
+        const m = metrics[0];
+        return {
+          ml_available: true,
+          status: "Active (Using Scikit-Learn Model)",
+          algorithm: m.algorithm || "Logistic Regression Classifier",
+          modelVersion: m.modelVersion || "v1.0.0",
+          featureVersion: m.featureVersion || "v1.0",
+          datasetSize: m.datasetSize || 100,
+          trainedAt: m.trainedAt || new Date().toISOString(),
+          accuracy: m.metrics?.accuracy || 0.92,
+          f1_score: m.metrics?.f1_score || 0.92
+        };
+      }
+      return {
+        ml_available: false,
+        status: "Using Transparent Rule-Based Fallback (Model not trained yet)",
+        algorithm: "Rule-Based Weighted Scoring",
+        modelVersion: "None",
+        featureVersion: "v1.0",
+        datasetSize: 0,
+        trainedAt: null,
+        accuracy: 0.0,
+        f1_score: 0.0
+      };
+    }
+    const res = await api.get('/ml/status');
+    return res.data;
   },
 
   async getMetrics() {
@@ -1682,12 +1779,19 @@ export const mlService = {
       const metrics = getFromDB<any>('tripmate_ml_metrics');
       if (!metrics || metrics.length === 0) {
         return {
-          model_type: "None",
-          status: "Using Rule-Based Fallback System (Model not trained yet)",
-          accuracy: 0.0,
-          precision: 0.0,
-          recall: 0.0,
-          f1_score: 0.0
+          status: "Using Rule-Based Compatibility System (Model not trained yet)",
+          algorithm: "Rule-Based Weighted Scoring",
+          modelVersion: "None",
+          featureVersion: "v1.0",
+          datasetSize: 0,
+          trainedAt: null,
+          metrics: {
+            accuracy: 0.0,
+            precision: 0.0,
+            recall: 0.0,
+            f1_score: 0.0,
+            confusion_matrix: [[0, 0], [0, 0]]
+          }
         };
       }
       return metrics[0];

@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 
 from app.config.db import Database
-from app.routes import auth, users, trips, discovery, requests, connections, messages, ai, weather, ml, safety, collaboration, admin, notifications, ai_planner, ai_standalone, locations
+from app.routes import auth, users, trips, discovery, requests, connections, messages, ai, weather, ml, safety, collaboration, admin, notifications, ai_planner, ai_standalone, locations, matching
 
 
 # Configure Logging
@@ -62,6 +62,7 @@ app.include_router(auth.router)
 app.include_router(users.router)
 app.include_router(trips.router)
 app.include_router(discovery.router)
+app.include_router(matching.router)
 app.include_router(requests.router)
 app.include_router(connections.router)
 app.include_router(messages.router)
