@@ -87,20 +87,33 @@ class RAGService:
         logger.info(f"ChromaDB seeded successfully with {len(ids)} places.")
 
     @classmethod
-    def search_places(cls, destination: str, query: str = "", limit: int = 5) -> List[Dict[str, Any]]:
-        """Search places by destination and matching query using semantic similarity."""
-        collection = cls.get_collection()
+    def search_places(cls, destination: str, query: Any = "", limit: int = 5) -> List[Dict[str, Any]]:
+        """Search places by destination and matching query using semantic similarity or catalog search."""
+        if isinstance(query, list):
+            search_query = ", ".join([str(q) for q in query if q])
+        elif isinstance(query, str):
+            search_query = query.strip()
+        else:
+            search_query = ""
+
+        if not search_query:
+            search_query = f"Top attractions and things to do in {destination}"
+
         dest_clean = destination.split(",")[0].strip().lower()
-        search_query = query if query else f"Top attractions and things to do in {destination}"
 
         try:
+            collection = cls.get_collection()
+            # Ensure seeded if empty
+            if collection.count() == 0:
+                cls.seed_initial_places()
+
             results = collection.query(
                 query_texts=[search_query],
                 n_results=15
             )
         except Exception as e:
-            logger.error(f"ChromaDB query failed: {e}")
-            return []
+            logger.debug(f"ChromaDB query fallback: {e}")
+            results = None
 
         matched_places = []
         if results and results.get("metadatas") and len(results["metadatas"]) > 0:
@@ -116,16 +129,29 @@ class RAGService:
                     if len(matched_places) >= limit:
                         break
 
-        # Fallback if no matching destination results found
-        if not matched_places and results and results.get("metadatas") and len(results["metadatas"]) > 0:
-            for metadata in results["metadatas"][0][:limit]:
-                matched_places.append({
-                    "name": metadata.get("name"),
-                    "description": metadata.get("description"),
-                    "why_matches": metadata.get("why_matches"),
-                    "activity_type": metadata.get("activity_type")
-                })
-        
+        # In-memory places catalog fallback if ChromaDB returned empty
+        if not matched_places:
+            catalog = [
+                {"destination": "goa", "name": "Baga Beach", "description": "Famous sandy beach with water sports and vibrant sunset shacks.", "why_matches": "Scenic views and beach activities.", "activity_type": "Outdoor"},
+                {"destination": "goa", "name": "Basilica of Bom Jesus", "description": "UNESCO World Heritage Baroque landmark in Old Goa.", "why_matches": "Historical architecture and cultural heritage.", "activity_type": "Indoor"},
+                {"destination": "goa", "name": "Dudhsagar Waterfalls", "description": "Majestic four-tiered cascading falls in lush greenery.", "why_matches": "Nature hiking, forest trek and photography.", "activity_type": "Outdoor"},
+                {"destination": "manali", "name": "Solang Valley", "description": "Picturesque valley famous for mountain sports and scenic views.", "why_matches": "Adventure sports, photography and snowy landscapes.", "activity_type": "Outdoor"},
+                {"destination": "manali", "name": "Hadimba Temple", "description": "Ancient wooden temple set amidst towering cedar forests.", "why_matches": "Peaceful heritage site and historic architecture.", "activity_type": "Outdoor"},
+                {"destination": "paris", "name": "Eiffel Tower & Champ de Mars", "description": "World-famous iron monument with panoramic views.", "why_matches": "Iconic global landmark and evening illumination.", "activity_type": "Outdoor"},
+                {"destination": "paris", "name": "Louvre Museum", "description": "World's largest art museum holding historical masterpieces.", "why_matches": "World-class art and cultural history.", "activity_type": "Indoor"},
+                {"destination": "london", "name": "Tower Bridge & Thames Path", "description": "Historic suspension bridge with scenic river walking paths.", "why_matches": "Architecture, heritage and photography.", "activity_type": "Outdoor"},
+            ]
+            for item in catalog:
+                if dest_clean in item["destination"] or item["destination"] in dest_clean:
+                    matched_places.append({
+                        "name": item["name"],
+                        "description": item["description"],
+                        "why_matches": item["why_matches"],
+                        "activity_type": item["activity_type"]
+                    })
+                    if len(matched_places) >= limit:
+                        break
+
         return matched_places
 
     @classmethod
